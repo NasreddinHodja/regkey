@@ -86,6 +86,17 @@ impl Db {
         }
     }
 
+    pub fn top_keys_global(&self, limit: Option<usize>) -> Result<Vec<(String, String, i64)>> {
+        let limit = limit.map(|n| n as i64).unwrap_or(-1);
+        let mut stmt = self.conn.prepare(
+            "SELECT key, modifiers, COUNT(*) FROM keystrokes
+             GROUP BY key, modifiers ORDER BY COUNT(*) DESC LIMIT ?1",
+        )?;
+        stmt.query_map(params![limit], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?.collect()
+    }
+
     pub fn top_keys(&self, apps: &[String], limit: Option<usize>) -> Result<Vec<(String, String, String, i64)>> {
         let limit = limit.map(|n| n as i64).unwrap_or(-1);
 

@@ -36,7 +36,12 @@ pub struct AppEntry {
 pub fn run(apps: &[String], top: Option<usize>, format: Format) {
     let db = Db::open().expect("failed to open database");
 
-    let keys = db.top_keys(apps, top).expect("query failed");
+    let keys = if apps.is_empty() {
+        db.top_keys_global(top).expect("query failed")
+            .into_iter().map(|(key, modifiers, count)| (key, modifiers, String::new(), count)).collect()
+    } else {
+        db.top_keys(apps, top).expect("query failed")
+    };
     let top_apps = if apps.is_empty() { db.top_apps(None).expect("query failed") } else { vec![] };
     let bigram_report = bigrams::build(apps, top, &db);
 
@@ -75,7 +80,11 @@ fn print_text(report: &Report) {
         let label = display_label(entry);
         let bar_len = (entry.count * 20 / max_count) as usize;
         let bar = "█".repeat(bar_len);
-        println!("{:>2}.  {:<width$}  {:>6}  {:<20}  {}", i + 1, label, entry.count, bar, entry.app, width = max_label_len);
+        if report.filter.apps.is_empty() {
+            println!("{:>2}.  {:<width$}  {:>6}  {}", i + 1, label, entry.count, bar, width = max_label_len);
+        } else {
+            println!("{:>2}.  {:<width$}  {:>6}  {:<20}  {}", i + 1, label, entry.count, bar, entry.app, width = max_label_len);
+        }
     }
 
     if !report.apps.is_empty() {
