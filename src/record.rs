@@ -173,3 +173,52 @@ fn now_ms() -> i64 {
         .unwrap()
         .as_millis() as i64
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modifier_state_single() {
+        let mut m = ModifierState::default();
+        m.press(KeyCode::KEY_LEFTCTRL);
+        assert_eq!(m.as_string(), "ctrl");
+    }
+
+    #[test]
+    fn modifier_state_multiple() {
+        let mut m = ModifierState::default();
+        m.press(KeyCode::KEY_LEFTCTRL);
+        m.press(KeyCode::KEY_LEFTSHIFT);
+        assert_eq!(m.as_string(), "ctrl+shift");
+    }
+
+    #[test]
+    fn modifier_state_release() {
+        let mut m = ModifierState::default();
+        m.press(KeyCode::KEY_LEFTCTRL);
+        m.press(KeyCode::KEY_LEFTSHIFT);
+        m.release(KeyCode::KEY_LEFTCTRL);
+        assert_eq!(m.as_string(), "shift");
+    }
+
+    #[test]
+    fn modifier_state_empty() {
+        let m = ModifierState::default();
+        assert_eq!(m.as_string(), "");
+    }
+
+    #[test]
+    fn modifier_state_is_modifier() {
+        assert!(ModifierState::is_modifier(KeyCode::KEY_LEFTSHIFT));
+        assert!(ModifierState::is_modifier(KeyCode::KEY_RIGHTALT));
+        assert!(!ModifierState::is_modifier(KeyCode::KEY_A));
+    }
+
+    #[test]
+    fn key_name_strips_prefix() {
+        assert_eq!(key_name(KeyCode::KEY_A), "a");
+        assert_eq!(key_name(KeyCode::KEY_SPACE), "space");
+        assert_eq!(key_name(KeyCode::KEY_ENTER), "enter");
+    }
+}

@@ -429,4 +429,77 @@ mod tests {
         db.clear(None).unwrap();
         assert!(db.top_bigrams(&[], None).unwrap().is_empty());
     }
+
+    #[test]
+    fn trigrams_global() {
+        let db = in_memory();
+        db.insert_trigram(1, "h", "", "j", "", "k", "", "kitty").unwrap();
+        db.insert_trigram(2, "h", "", "j", "", "k", "", "kitty").unwrap();
+        db.insert_trigram(3, "a", "", "b", "", "c", "", "kitty").unwrap();
+
+        let rows = db.top_trigrams(&[], None).unwrap();
+        assert_eq!(rows[0].0, "h");
+        assert_eq!(rows[0].2, "j");
+        assert_eq!(rows[0].4, "k");
+        assert_eq!(rows[0].7, 2);
+        assert_eq!(rows[1].0, "a");
+        assert_eq!(rows[1].7, 1);
+    }
+
+    #[test]
+    fn trigrams_filter_app() {
+        let db = in_memory();
+        db.insert_trigram(1, "h", "", "j", "", "k", "", "kitty").unwrap();
+        db.insert_trigram(2, "a", "", "b", "", "c", "", "emacs").unwrap();
+
+        let rows = db.top_trigrams(&["emacs".to_string()], None).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "a");
+        assert_eq!(rows[0].2, "b");
+        assert_eq!(rows[0].4, "c");
+    }
+
+    #[test]
+    fn trigrams_union() {
+        let db = in_memory();
+        db.insert_trigram(1, "h", "", "j", "", "k", "", "kitty").unwrap();
+        db.insert_trigram(2, "a", "", "b", "", "c", "", "emacs").unwrap();
+        db.insert_trigram(3, "x", "", "y", "", "z", "", "firefox").unwrap();
+
+        let apps = vec!["kitty".to_string(), "emacs".to_string()];
+        let rows = db.top_trigrams(&apps, None).unwrap();
+        let triples: Vec<(&str, &str, &str)> = rows.iter()
+            .map(|(f, _, m, _, l, _, _, _)| (f.as_str(), m.as_str(), l.as_str()))
+            .collect();
+        assert!(triples.contains(&("h", "j", "k")));
+        assert!(triples.contains(&("a", "b", "c")));
+        assert!(!triples.contains(&("x", "y", "z")));
+    }
+
+    #[test]
+    fn trigrams_with_modifiers() {
+        let db = in_memory();
+        db.insert_trigram(1, "h", "ctrl", "j", "ctrl", "k", "ctrl", "kitty").unwrap();
+        db.insert_trigram(2, "h", "ctrl", "j", "ctrl", "k", "ctrl", "kitty").unwrap();
+        db.insert_trigram(3, "h", "",     "j", "",     "k", "",     "kitty").unwrap();
+
+        let rows = db.top_trigrams(&[], None).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].7, 2);
+        assert_eq!(rows[0].1, "ctrl");
+    }
+
+    #[test]
+    fn clear_also_clears_trigrams() {
+        let db = in_memory();
+        db.insert_trigram(1, "h", "", "j", "", "k", "", "kitty").unwrap();
+        db.insert_trigram(2, "a", "", "b", "", "c", "", "emacs").unwrap();
+
+        db.clear(Some("kitty")).unwrap();
+        assert!(db.top_trigrams(&["kitty".to_string()], None).unwrap().is_empty());
+        assert_eq!(db.top_trigrams(&["emacs".to_string()], None).unwrap().len(), 1);
+
+        db.clear(None).unwrap();
+        assert!(db.top_trigrams(&[], None).unwrap().is_empty());
+    }
 }
