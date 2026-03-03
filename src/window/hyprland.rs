@@ -13,8 +13,10 @@ impl WindowProvider for HyprlandProvider {
             let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".into());
             let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap();
 
-            if let Some(event) = query_active_window(&runtime, &sig) {
-                if tx.send(event).is_err() { return; }
+            if let Some(event) = query_active_window(&runtime, &sig)
+                && tx.send(event).is_err()
+            {
+                return;
             }
 
             let socket2 = format!("{}/hypr/{}/.socket2.sock", runtime, sig);

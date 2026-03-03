@@ -4,12 +4,12 @@ use crate::cli::Format;
 use crate::db::Db;
 
 #[derive(Serialize)]
-pub struct BigramReport {
+pub struct TrigramReport {
     pub generated_at:   i64,
     pub recorded_since: Option<i64>,
     pub duration_s:     Option<i64>,
     pub filter:         Filter,
-    pub bigrams:        Vec<BigramEntry>,
+    pub trigrams:       Vec<TrigramEntry>,
 }
 
 #[derive(Serialize)]
@@ -19,13 +19,15 @@ pub struct Filter {
 }
 
 #[derive(Serialize, Clone)]
-pub struct BigramEntry {
-    pub prev_key:  String,
-    pub prev_mods: String,
-    pub curr_key:  String,
-    pub curr_mods: String,
-    pub app:       String,
-    pub count:     i64,
+pub struct TrigramEntry {
+    pub first_key:  String,
+    pub first_mods: String,
+    pub mid_key:    String,
+    pub mid_mods:   String,
+    pub last_key:   String,
+    pub last_mods:  String,
+    pub app:        String,
+    pub count:      i64,
 }
 
 pub fn run(apps: &[String], top: Option<usize>, format: Format) {
@@ -37,32 +39,32 @@ pub fn run(apps: &[String], top: Option<usize>, format: Format) {
     }
 }
 
-pub fn build(apps: &[String], top: Option<usize>, db: &Db) -> BigramReport {
-    let rows = db.top_bigrams(apps, top).expect("query failed");
+pub fn build(apps: &[String], top: Option<usize>, db: &Db) -> TrigramReport {
+    let rows = db.top_trigrams(apps, top).expect("query failed");
     let now = now_unix_ms();
     let recorded_since = db.first_ts().expect("query failed");
     let duration_s = recorded_since.map(|first| (now - first) / 1000);
-    BigramReport {
+    TrigramReport {
         generated_at: now,
         recorded_since,
         duration_s,
         filter: Filter { apps: apps.to_vec(), top },
-        bigrams: rows.into_iter().map(|(prev_key, prev_mods, curr_key, curr_mods, app, count)| {
-            BigramEntry { prev_key, prev_mods, curr_key, curr_mods, app, count }
+        trigrams: rows.into_iter().map(|(first_key, first_mods, mid_key, mid_mods, last_key, last_mods, app, count)| {
+            TrigramEntry { first_key, first_mods, mid_key, mid_mods, last_key, last_mods, app, count }
         }).collect(),
     }
 }
 
-pub fn print_text(report: &BigramReport) {
-    if report.bigrams.is_empty() {
-        println!("No bigrams recorded yet.");
+pub fn print_text(report: &TrigramReport) {
+    if report.trigrams.is_empty() {
+        println!("No trigrams recorded yet.");
         return;
     }
 
     let header = if report.filter.apps.is_empty() {
-        "Global bigram report".to_string()
+        "Global trigram report".to_string()
     } else {
-        format!("Bigram report — {}", report.filter.apps.join(", "))
+        format!("Trigram report — {}", report.filter.apps.join(", "))
     };
     println!("\n{header}");
     if let Some(dur) = report.duration_s {
@@ -70,10 +72,10 @@ pub fn print_text(report: &BigramReport) {
     }
     println!("{}", "─".repeat(42));
 
-    let max_count = report.bigrams[0].count;
-    let max_label_len = report.bigrams.iter().map(|e| display_label(e).len()).max().unwrap_or(1);
+    let max_count = report.trigrams[0].count;
+    let max_label_len = report.trigrams.iter().map(|e| display_label(e).len()).max().unwrap_or(1);
 
-    for (i, entry) in report.bigrams.iter().enumerate() {
+    for (i, entry) in report.trigrams.iter().enumerate() {
         let label = display_label(entry);
         let bar_len = (entry.count * 20 / max_count) as usize;
         let bar = "█".repeat(bar_len);
@@ -83,10 +85,11 @@ pub fn print_text(report: &BigramReport) {
     println!();
 }
 
-fn display_label(e: &BigramEntry) -> String {
-    let prev = if e.prev_mods.is_empty() { e.prev_key.clone() } else { format!("{}+{}", e.prev_mods, e.prev_key) };
-    let curr = if e.curr_mods.is_empty() { e.curr_key.clone() } else { format!("{}+{}", e.curr_mods, e.curr_key) };
-    format!("{prev} -> {curr}")
+fn display_label(e: &TrigramEntry) -> String {
+    let first = if e.first_mods.is_empty() { e.first_key.clone() } else { format!("{}+{}", e.first_mods, e.first_key) };
+    let mid   = if e.mid_mods.is_empty()   { e.mid_key.clone()   } else { format!("{}+{}", e.mid_mods,   e.mid_key)   };
+    let last  = if e.last_mods.is_empty()  { e.last_key.clone()  } else { format!("{}+{}", e.last_mods,  e.last_key)  };
+    format!("{first} -> {mid} -> {last}")
 }
 
 fn fmt_duration(secs: i64) -> String {

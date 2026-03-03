@@ -5,6 +5,7 @@ mod cli;
 mod db;
 mod record;
 mod report;
+mod trigrams;
 mod window;
 
 fn main() {
@@ -17,6 +18,7 @@ fn main() {
             println!("Deleted {deleted} keystroke(s).");
         }
         cli::Command::Report { app, top, format } => report::run(&app, top, format),
-        cli::Command::Bigrams { app, top, format } => bigrams::run(&app, top, format),
+        cli::Command::Bigrams  { app, top, format } => bigrams::run(&app, top, format),
+        cli::Command::Trigrams { app, top, format } => trigrams::run(&app, top, format),
     }
 }

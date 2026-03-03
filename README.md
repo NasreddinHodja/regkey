@@ -106,7 +106,3 @@ window/
   sway.rs        Sway stub
   null.rs        Fallback (no app context)
 ```
-
-## License
-
-MIT

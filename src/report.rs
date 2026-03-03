@@ -3,14 +3,18 @@ use serde::Serialize;
 use crate::bigrams;
 use crate::cli::Format;
 use crate::db::Db;
+use crate::trigrams;
 
 #[derive(Serialize)]
 pub struct Report {
-    pub generated_at: i64,
-    pub filter:  Filter,
-    pub keys:    Vec<KeyEntry>,
-    pub apps:    Vec<AppEntry>,
-    pub bigrams: Vec<bigrams::BigramEntry>,
+    pub generated_at:  i64,
+    pub recorded_since: Option<i64>,
+    pub duration_s:    Option<i64>,
+    pub filter:        Filter,
+    pub keys:          Vec<KeyEntry>,
+    pub apps:          Vec<AppEntry>,
+    pub bigrams:       Vec<bigrams::BigramEntry>,
+    pub trigrams:      Vec<trigrams::TrigramEntry>,
 }
 
 #[derive(Serialize)]
@@ -43,14 +47,22 @@ pub fn run(apps: &[String], top: Option<usize>, format: Format) {
         db.top_keys(apps, top).expect("query failed")
     };
     let top_apps = if apps.is_empty() { db.top_apps(None).expect("query failed") } else { vec![] };
-    let bigram_report = bigrams::build(apps, top, &db);
+    let bigram_report   = bigrams::build(apps, top, &db);
+    let trigram_report  = trigrams::build(apps, top, &db);
+
+    let now = now_unix_ms();
+    let recorded_since = db.first_ts().expect("query failed");
+    let duration_s = recorded_since.map(|first| (now - first) / 1000);
 
     let report = Report {
-        generated_at: now_unix_ms(),
+        generated_at: now,
+        recorded_since,
+        duration_s,
         filter:  Filter { apps: apps.to_vec(), top },
         keys:    keys.into_iter().map(|(key, modifiers, app, count)| KeyEntry { key, modifiers, app, count }).collect(),
         apps:    top_apps.into_iter().map(|(class, count)| AppEntry { class, count }).collect(),
-        bigrams: bigram_report.bigrams,
+        bigrams:  bigram_report.bigrams,
+        trigrams: trigram_report.trigrams,
     };
 
     match format {
@@ -71,6 +83,9 @@ fn print_text(report: &Report) {
         format!("Keystroke report — {}", report.filter.apps.join(", "))
     };
     println!("\n{header}");
+    if let Some(dur) = report.duration_s {
+        println!("Recording duration: {}", fmt_duration(dur));
+    }
     println!("{}", "─".repeat(42));
 
     let max_count = report.keys[0].count;
@@ -98,9 +113,21 @@ fn print_text(report: &Report) {
 
     if !report.bigrams.is_empty() {
         bigrams::print_text(&bigrams::BigramReport {
-            generated_at: report.generated_at,
+            generated_at:   report.generated_at,
+            recorded_since: report.recorded_since,
+            duration_s:     report.duration_s,
             filter: bigrams::Filter { apps: report.filter.apps.clone(), top: report.filter.top },
-            bigrams: report.bigrams.iter().cloned().collect(),
+            bigrams: report.bigrams.to_vec(),
+        });
+    }
+
+    if !report.trigrams.is_empty() {
+        trigrams::print_text(&trigrams::TrigramReport {
+            generated_at:   report.generated_at,
+            recorded_since: report.recorded_since,
+            duration_s:     report.duration_s,
+            filter: trigrams::Filter { apps: report.filter.apps.clone(), top: report.filter.top },
+            trigrams: report.trigrams.to_vec(),
         });
     }
 
@@ -120,4 +147,13 @@ fn now_unix_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64
+}
+
+fn fmt_duration(secs: i64) -> String {
+    let d = secs / 86400;
+    let h = (secs % 86400) / 3600;
+    let m = (secs % 3600) / 60;
+    if d > 0 { format!("{d}d {h}h {m}m") }
+    else if h > 0 { format!("{h}h {m}m") }
+    else { format!("{m}m") }
 }

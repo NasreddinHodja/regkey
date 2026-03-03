@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use rusqlite::{Connection, Result, params};
 use rusqlite::types::Value;
 
+pub(crate) type BigramRow  = (String, String, String, String, String, i64);
+pub(crate) type TrigramRow = (String, String, String, String, String, String, String, i64);
+
 pub struct Db {
     conn: Connection,
 }
@@ -36,6 +39,18 @@ impl Db {
             CREATE INDEX IF NOT EXISTS idx_bigrams_app  ON bigrams(app_class);
             CREATE INDEX IF NOT EXISTS idx_bigrams_prev ON bigrams(prev_key);
             CREATE INDEX IF NOT EXISTS idx_bigrams_curr ON bigrams(curr_key);
+            CREATE TABLE IF NOT EXISTS trigrams (
+                id         INTEGER PRIMARY KEY,
+                ts         INTEGER NOT NULL,
+                first_key  TEXT    NOT NULL,
+                first_mods TEXT    NOT NULL,
+                mid_key    TEXT    NOT NULL,
+                mid_mods   TEXT    NOT NULL,
+                last_key   TEXT    NOT NULL,
+                last_mods  TEXT    NOT NULL,
+                app_class  TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_trigrams_app ON trigrams(app_class);
         ")?;
         Ok(Self { conn })
     }
@@ -58,7 +73,7 @@ impl Db {
         Ok(())
     }
 
-    pub fn top_bigrams(&self, apps: &[String], limit: Option<usize>) -> Result<Vec<(String, String, String, String, String, i64)>> {
+    pub fn top_bigrams(&self, apps: &[String], limit: Option<usize>) -> Result<Vec<BigramRow>> {
         let limit = limit.map(|n| n as i64).unwrap_or(-1);
 
         if apps.is_empty() {
@@ -82,6 +97,44 @@ impl Db {
             let mut stmt = self.conn.prepare(&sql)?;
             stmt.query_map(rusqlite::params_from_iter(params), |row| {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+            })?.collect()
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_trigram(&self, ts: i64, first_key: &str, first_mods: &str, mid_key: &str, mid_mods: &str, last_key: &str, last_mods: &str, app_class: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO trigrams (ts, first_key, first_mods, mid_key, mid_mods, last_key, last_mods, app_class)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![ts, first_key, first_mods, mid_key, mid_mods, last_key, last_mods, app_class],
+        )?;
+        Ok(())
+    }
+
+    pub fn top_trigrams(&self, apps: &[String], limit: Option<usize>) -> Result<Vec<TrigramRow>> {
+        let limit = limit.map(|n| n as i64).unwrap_or(-1);
+
+        if apps.is_empty() {
+            let mut stmt = self.conn.prepare(
+                "SELECT first_key, first_mods, mid_key, mid_mods, last_key, last_mods, app_class, COUNT(*) FROM trigrams
+                 GROUP BY first_key, first_mods, mid_key, mid_mods, last_key, last_mods, app_class ORDER BY COUNT(*) DESC LIMIT ?1",
+            )?;
+            stmt.query_map(params![limit], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?))
+            })?.collect()
+        } else {
+            let placeholders = (1..=apps.len()).map(|i| format!("?{i}")).collect::<Vec<_>>().join(", ");
+            let sql = format!(
+                "SELECT first_key, first_mods, mid_key, mid_mods, last_key, last_mods, app_class, COUNT(*) FROM trigrams
+                 WHERE app_class IN ({placeholders})
+                 GROUP BY first_key, first_mods, mid_key, mid_mods, last_key, last_mods, app_class ORDER BY COUNT(*) DESC LIMIT ?{}",
+                apps.len() + 1
+            );
+            let mut params: Vec<Value> = apps.iter().map(|s| Value::Text(s.clone())).collect();
+            params.push(Value::Integer(limit));
+            let mut stmt = self.conn.prepare(&sql)?;
+            stmt.query_map(rusqlite::params_from_iter(params), |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?))
             })?.collect()
         }
     }
@@ -137,13 +190,23 @@ impl Db {
         })?.collect()
     }
 
+    pub fn first_ts(&self) -> Result<Option<i64>> {
+        self.conn.query_row(
+            "SELECT MIN(ts) FROM keystrokes",
+            [],
+            |row| row.get(0),
+        )
+    }
+
     pub fn clear(&self, app_class: Option<&str>) -> Result<usize> {
         match app_class {
             Some(app) => {
-                self.conn.execute("DELETE FROM bigrams WHERE app_class = ?1", params![app])?;
+                self.conn.execute("DELETE FROM trigrams WHERE app_class = ?1", params![app])?;
+                self.conn.execute("DELETE FROM bigrams  WHERE app_class = ?1", params![app])?;
                 self.conn.execute("DELETE FROM keystrokes WHERE app_class = ?1", params![app])
             }
             None => {
+                self.conn.execute("DELETE FROM trigrams", [])?;
                 self.conn.execute("DELETE FROM bigrams", [])?;
                 self.conn.execute("DELETE FROM keystrokes", [])
             }
@@ -188,6 +251,18 @@ mod tests {
             CREATE INDEX idx_bigrams_app  ON bigrams(app_class);
             CREATE INDEX idx_bigrams_prev ON bigrams(prev_key);
             CREATE INDEX idx_bigrams_curr ON bigrams(curr_key);
+            CREATE TABLE trigrams (
+                id         INTEGER PRIMARY KEY,
+                ts         INTEGER NOT NULL,
+                first_key  TEXT    NOT NULL,
+                first_mods TEXT    NOT NULL,
+                mid_key    TEXT    NOT NULL,
+                mid_mods   TEXT    NOT NULL,
+                last_key   TEXT    NOT NULL,
+                last_mods  TEXT    NOT NULL,
+                app_class  TEXT    NOT NULL
+            );
+            CREATE INDEX idx_trigrams_app ON trigrams(app_class);
         ").unwrap();
         Db { conn }
     }

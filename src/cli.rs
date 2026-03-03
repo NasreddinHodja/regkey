@@ -45,6 +45,18 @@ pub enum Command {
         #[arg(long, default_value = "json")]
         format: Format,
     },
+    /// Show trigram (three-key sequence) report
+    Trigrams {
+        /// Filter to one or more app classes (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        app: Vec<String>,
+        /// Limit results to top N (default: show all)
+        #[arg(long)]
+        top: Option<usize>,
+        /// Output format
+        #[arg(long, default_value = "json")]
+        format: Format,
+    },
 }
 
 #[derive(Clone, ValueEnum)]

@@ -42,25 +42,35 @@ pub fn run(window_ms: u64) {
     let db = Db::open().expect("failed to open database");
     let mut app_class = String::new();
     let mut app_title = String::new();
-    let mut last_key: Option<(String, String, i64)> = None;
+    let mut prev:      Option<(String, String, i64)> = None;
+    let mut prev_prev: Option<(String, String, i64)> = None;
 
     for event in rx {
         match event {
             Event::AppChange { class, title } => {
-                app_class = class;
-                app_title = title;
-                last_key = None;
+                app_class  = class;
+                app_title  = title;
+                prev       = None;
+                prev_prev  = None;
             }
             Event::Key { key, modifiers, ts } => {
-                if let Some((ref prev_key, ref prev_mods, prev_ts)) = last_key {
-                    if ts - prev_ts < window_ms as i64 {
-                        db.insert_bigram(ts, prev_key, prev_mods, &key, &modifiers, &app_class)
-                            .expect("bigram insert failed");
+                let win = window_ms as i64;
+                if let Some((ref pk, ref pm, pts)) = prev
+                    && ts - pts < win
+                {
+                    if let Some((ref ppk, ref ppm, ppts)) = prev_prev
+                        && pts - ppts < win
+                    {
+                        db.insert_trigram(ts, ppk, ppm, pk, pm, &key, &modifiers, &app_class)
+                            .expect("trigram insert failed");
                     }
+                    db.insert_bigram(ts, pk, pm, &key, &modifiers, &app_class)
+                        .expect("bigram insert failed");
                 }
                 db.insert(ts, &key, &modifiers, &app_class, &app_title)
                     .expect("db insert failed");
-                last_key = Some((key, modifiers, ts));
+                prev_prev = prev.take();
+                prev = Some((key, modifiers, ts));
             }
         }
     }
